@@ -20,7 +20,7 @@ The general workflow is:
 
 `UnapprovedFileAnalysis+ v6.1.sql` is intended to run in time-bounded chunks. Use non-overlapping UTC/server-time ranges and keep every successful chunk for the intended period in the input folder.
 
-For low-volumne environment, you may be able to increase the time window by days, weeks, or months to get all of the data in one query. 
+For low-volumne environments, you may be able to increase the time window by days, weeks, or months to get all of the data in one query. 
 
 For high-volume environments, the requested period should be exported as multiple smaller time chunks. If an hourly chunk still exceeds the limit, that interval should be divided further rather than increasing the row cap. For a fixed chunk, edit `UnapprovedFileAnalysis+ v6.1.sql` by uncommenting the two `SET @startDate` and `SET @endDate` lines near the top of the script, then set both values to the desired non-overlapping window.
 
