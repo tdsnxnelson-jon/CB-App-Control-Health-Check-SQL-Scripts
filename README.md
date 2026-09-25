@@ -38,8 +38,7 @@ Use this procedure for scripts that return one result grid:
 | `Approval Metrics+ v4.3 SAFE.sql` | CSV | `approval metric` | Use the SAFE version when provided. |
 | `RuleAnalysis.sql` | CSV | `rule analysis` or `ruleanalysis` | One CSV export. |
 | `ApprovalEventsForRulename.sql` | CSV | `approval events` or `approvalevents` | One CSV export. |
-| `BlockAnalysis v6.2.sql` | CSV | `block analysis` or `blockanalysis` | Use v6.2 to include all enforcement events. |
-| `BlockAnalysis v6.2 fast.sql` | CSV | `block analysis` or `blockanalysis` | Optional alternative when v6.2 is too slow; it returns less discovery detail. |
+| `BlockAnalysis v6.3 aggregated.sql` | CSV | `block analysis` or `blockanalysis` | Recommended. Includes all enforcement events and aggregates duplicates into `EventCount`. |
 | `UnapprovedFileAnalysis+ v6.1.sql` | CSV | `unapproved file` or `unapprovedfileanalysis` | Multiple non-overlapping time chunks are supported. |
 | `DatabaseErrorAnalysis.sql` | CSV | `database error` or `databaseerroranalysis` | One CSV export. |
 
