@@ -8,7 +8,62 @@ The general workflow is:
 2. Export the result in the format listed below.
 3. Upload all exports for one health-check run into it's own folder.
 
-## Before running the scripts
+## Automated collection (recommended)
+
+`Collect-HealthCheckData.ps1` in this folder replaces the manual per-script
+export procedure: it runs every SQL script in sequence and writes each result
+in the exact format and filename the health-check report tool expects, with an
+option to zip the output folder.
+
+Run it on a machine with SQL Server connectivity (Windows PowerShell 5.1+,
+no extra modules required):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\Collect-HealthCheckData.ps1 -Server SQLHOST01 -Zip
+```
+
+Run with `-Help` to print this parameter reference at the prompt.
+
+Parameters:
+
+- `-Server` (required) - SQL Server instance hosting the App Control
+  database, e.g. `SQLHOST01`, `SQLHOST01\INSTANCE`, or an Availability Group
+  listener name.
+- `-Database` - initial database for the connection (default: `das`; the
+  scripts themselves switch to `das`).
+- `-OutputFolder` - output location (default:
+  `.\HealthCheckExport_<timestamp>`). Created if missing.
+- `-SqlCredential (Get-Credential)` - use a SQL login instead of Windows
+  integrated authentication.
+- `-ReadOnlyIntent` - route the session to a readable Availability Group
+  secondary (recommended for production; see the guidance below).
+- `-UnapprovedStart` / `-UnapprovedEnd` - the Unapproved File Analysis
+  reporting period (default: last 7 days). The script runs the analysis per
+  time window and automatically splits any window that exceeds the row cap
+  into smaller non-overlapping chunks, so no manual chunking is needed.
+- `-ComputersExport` / `-CustomRulesExport` - paths to the two console UI
+  exports (see below), copied into the output folder. If omitted, the script
+  prompts for them; they are the only inputs that cannot be collected from SQL.
+- `-Zip` - compress the output folder to `<folder>.zip` when done. If the
+  collected data exceeds the 2 GB `Compress-Archive` limit, the script skips
+  zipping and tells you to zip the folder manually.
+- `-CommandTimeoutSec` - per-batch SQL command timeout in seconds, `0` =
+  unlimited (default: `3600`). Increase for very large databases.
+- `-NonInteractive` - never prompt (for scheduled runs). Missing console
+  exports are reported as warnings instead.
+- `-Help` - show the usage message and exit.
+
+The script runs one SQL script at a time and uses only the SAFE variant of
+the CbP analysis script. The same production cautions below still apply:
+prefer a readable secondary, or a low-activity window on the primary, and
+monitor the server during the run. If a script fails (for example missing
+`VIEW SERVER STATE` permission), the failure is reported and collection
+continues; the report tool skips missing inputs.
+
+The manual SSMS export procedures below remain valid as a fallback and
+produce identical input files.
+
+## Manual Collection - Before running the scripts
 
 - Use a read-only or readable Availability Group secondary when possible.
 - If a secondary is not available, run during a low-activity maintenance window.
