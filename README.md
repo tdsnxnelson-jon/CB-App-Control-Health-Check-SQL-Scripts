@@ -1,118 +1,92 @@
 # SQL Script and Export Guide
 
-This folder contains the SQL scripts used to collect data for the CB App Control Health Check report.
+This folder contains the SQL scripts and collection tool for the CB App Control Health Check report. For each run, keep all exports together in one folder and do not mix servers or reporting periods.
 
-The general workflow is:
+## Recommended workflow
 
-1. Run each SQL script against the App Control database in SSMS.
-2. Export the result in the format listed below.
-3. Upload all exports for one health-check run into it's own folder.
+### 1. Export the console data
 
-## Automated collection (recommended)
+Two required inputs come from the App Control console, not SQL. Export them before collection or provide their paths when running the PowerShell script:
 
-`Collect-HealthCheckData.ps1` in this folder replaces the manual per-script
-export procedure: it runs every SQL script in sequence and writes each result
-in the exact format and filename the health-check report tool expects, with an
-option to zip the output folder.
+- **Computers:** Open the **Computers** page, add all columns to the view, and export the list as CSV or TXT. The filename must contain `computers`, for example `Computers_20260915.csv`.
+- **Custom Rules:** Open the **Custom Rules** page, add all columns to the view, and export the list as CSV or TXT. The filename must contain `custom`, for example `CustomRules_20260915.csv`.
 
-Run it on a machine with SQL Server connectivity (Windows PowerShell 5.1+,
-no extra modules required):
+### 2. Run the collection script
+
+`Collect-HealthCheckData.ps1` runs each SQL script in sequence and writes the results in the formats and filenames expected by the report tool. It also copies the two console exports into the output folder and can zip the completed collection.
+
+Run it from this folder on a Windows machine with SQL Server connectivity and Windows PowerShell 5.1 or later. No extra modules are required:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\Collect-HealthCheckData.ps1 -Server SQLHOST01 -Zip
+powershell -ExecutionPolicy Bypass -File .\Collect-HealthCheckData.ps1 `
+  -Server SQLHOST01 -ReadOnlyIntent `
+  -ComputersExport C:\Exports\Computers_20260915.csv `
+  -CustomRulesExport C:\Exports\CustomRules_20260915.csv -Zip
 ```
 
-Run with `-Help` to print this parameter reference at the prompt.
+For an Availability Group listener, `-ReadOnlyIntent` requests routing to a readable secondary. Omit it if the server does not support read-only routing. If the console export paths are omitted, the script prompts for them; press Enter to skip one. Skipped exports must be added to the output folder before running the report.
 
-Parameters:
+The script runs only one SQL script at a time and uses `CbP_Analysis_Script SAFE v2.sql`. Prefer a readable secondary for production collection. If one is unavailable, use a low-activity window and monitor SQL Server CPU, runnable tasks, and Availability Group health. Do not run the original `CbP_Analysis_Script.sql` on a busy production primary.
 
-- `-Server` (required) - SQL Server instance hosting the App Control
-  database, e.g. `SQLHOST01`, `SQLHOST01\INSTANCE`, or an Availability Group
-  listener name.
-- `-Database` - initial database for the connection (default: `das`; the
-  scripts themselves switch to `das`).
-- `-OutputFolder` - output location (default:
-  `.\HealthCheckExport_<timestamp>`). Created if missing.
-- `-SqlCredential (Get-Credential)` - use a SQL login instead of Windows
-  integrated authentication.
-- `-ReadOnlyIntent` - route the session to a readable Availability Group
-  secondary (recommended for production; see the guidance below).
-- `-UnapprovedStart` / `-UnapprovedEnd` - the Unapproved File Analysis
-  reporting period (default: last 7 days). The script runs the analysis per
-  time window and automatically splits any window that exceeds the row cap
-  into smaller non-overlapping chunks, so no manual chunking is needed.
-- `-ComputersExport` / `-CustomRulesExport` - paths to the two console UI
-  exports (see below), copied into the output folder. If omitted, the script
-  prompts for them; they are the only inputs that cannot be collected from SQL.
-- `-Zip` - compress the output folder to `<folder>.zip` when done. If the
-  collected data exceeds the 2 GB `Compress-Archive` limit, the script skips
-  zipping and tells you to zip the folder manually.
-- `-CommandTimeoutSec` - per-batch SQL command timeout in seconds, `0` =
-  unlimited (default: `3600`). Increase for very large databases.
-- `-NonInteractive` - never prompt (for scheduled runs). Missing console
-  exports are reported as warnings instead.
-- `-Help` - show the usage message and exit.
+### 3. Review the collection output
 
-The script runs one SQL script at a time and uses only the SAFE variant of
-the CbP analysis script. The same production cautions below still apply:
-prefer a readable secondary, or a low-activity window on the primary, and
-monitor the server during the run. If a script fails (for example missing
-`VIEW SERVER STATE` permission), the failure is reported and collection
-continues; the report tool skips missing inputs.
+By default, the script creates `HealthCheckExport_<timestamp>` in the current directory. Use `-OutputFolder` to choose another location. Check the completion messages and warnings: if an SQL script fails, collection continues, but the report tool skips the missing input and that report section will be empty. Add any missing console exports before using the folder. If the script already zipped the folder, update the ZIP after adding files.
 
-The manual SSMS export procedures below remain valid as a fallback and
-produce identical input files.
+The `-Zip` option creates `<output folder>.zip`. Windows PowerShell's `Compress-Archive` cannot handle archives over 2 GB; in that case, the script leaves the folder unzipped and tells you to compress it manually.
 
-## Manual Collection - Before running the scripts
+## Collection parameters
 
-- Use a read-only or readable Availability Group secondary when possible.
-- If a secondary is not available, run during a low-activity maintenance window.
-- Run one script at a time and monitor SQL Server CPU, runnable tasks, and AG health.
-- Do not run the original `CbP_Analysis_Script.sql` on a busy production primary. Use `CbP_Analysis_Script SAFE v2.sql` instead.
-- Do not mix exports from different servers, or reporting periods in the same input folder.
+Run with `-Help` to print the usage message. The main options are:
 
-## Unapproved File Analysis chunks
+- `-Server` (required): SQL Server instance, such as `SQLHOST01`, `SQLHOST01\INSTANCE`, or an Availability Group listener.
+- `-Database`: initial database (default: `das`; the scripts also switch to `das`).
+- `-OutputFolder`: output location (default: `HealthCheckExport_<timestamp>` in the current directory). Created if missing.
+- `-SqlCredential (Get-Credential)`: SQL login instead of Windows integrated authentication.
+- `-ReadOnlyIntent`: request routing to a readable Availability Group secondary.
+- `-UnapprovedStart` and `-UnapprovedEnd`: inclusive start and exclusive end of the Unapproved File Analysis period (default: the last 7 days). Windows exceeding the row cap are automatically split into smaller, non-overlapping chunks.
+- `-ComputersExport` and `-CustomRulesExport`: paths to the console CSV/TXT exports to copy into the output folder.
+- `-Zip`: zip the output folder when collection finishes, subject to the 2 GB limit described above.
+- `-CommandTimeoutSec`: per-batch timeout in seconds (default: `3600`; `0` means unlimited).
+- `-NonInteractive`: never prompt, for example in scheduled runs. Missing console exports are reported as warnings.
+- `-Help`: show usage and exit.
 
-`UnapprovedFileAnalysis+ v6.1.sql` is intended to run in time-bounded chunks. Use non-overlapping UTC/server-time ranges and keep every successful chunk for the intended period in the input folder.
+## Manual SSMS collection (fallback)
 
-For low-volumne environments, you may be able to increase the time window by days, weeks, or months to get all of the data in one query. 
+Use the procedures below only when collecting with the PowerShell script is not suitable. The same production cautions apply: use a readable secondary when possible; otherwise run during a low-activity window, execute one script at a time, and monitor the server. Keep all exports for a run together in one input folder.
 
-For high-volume environments, the requested period should be exported as multiple smaller time chunks. If an hourly chunk still exceeds the limit, that interval should be divided further rather than increasing the row cap. For a fixed chunk, edit `UnapprovedFileAnalysis+ v6.1.sql` by uncommenting the two `SET @startDate` and `SET @endDate` lines near the top of the script, then set both values to the desired non-overlapping window.
+### Single-result scripts: CSV
 
-## Exporting a single-result SQL script as CSV
-
-Before exporting, make sure SSMS is configured to include column headers:
+Before exporting, configure SSMS to include column headers:
 
 1. Open **Tools > Options > Query Results > SQL Server > Results to Grid**.
 2. Enable **Include column headers when copying or saving the results**.
 3. Select **OK**, then open a new query window before running the script. If SSMS does not apply the change, restart SSMS.
 
 Use this procedure for scripts that return one result grid:
+
 | Script | Export format | Filename must contain | Notes |
 |---|---|---|---|
-| `Approval Metrics+ v4.3 SAFE.sql` | CSV | `approval metric` | Use the SAFE version when provided. |
+| `Approval Metrics+ v4.3.sql` | CSV | `approval metric` | Use the SAFE version when one is provided. |
 | `RuleAnalysis.sql` | CSV | `rule analysis` or `ruleanalysis` | One CSV export. |
 | `ApprovalEventsForRulename.sql` | CSV | `approval events` or `approvalevents` | One CSV export. |
 | `BlockAnalysis v6.3 aggregated.sql` | CSV | `block analysis` or `blockanalysis` | Recommended. Includes all enforcement events and aggregates duplicates into `EventCount`. |
 | `UnapprovedFileAnalysis+ v6.1.sql` | CSV | `unapproved file` or `unapprovedfileanalysis` | Multiple non-overlapping time chunks are supported. |
 | `DatabaseErrorAnalysis.sql` | CSV | `database error` or `databaseerroranalysis` | One CSV export. |
 
-1. Open the SQL script in SSMS.
-2. Connect to the correct App Control SQL Server database.
-3. Confirm the script is pointed at the intended database and reporting period.
-4. Run the script.
-5. In the Results pane, right-click the result grid.
-6. Select **Save Results As...**.
-7. Save the file as **CSV UTF-8 (`*.csv`)** when available.
-8. Use a descriptive filename containing the required keyword in the table below.
-9. Save the file in the health-check input folder.
-10. Open the CSV in a text editor and confirm the first row contains column names such as `Computer ID`, `Event`, or `TimeStamp`, as appropriate for the script.
+For each script:
 
-Do not use a headerless export: the importer cannot safely infer the complete schema, so the query must be re-exported after enabling column headers. Do not save these exports as Excel workbooks. The health-check importer expects CSV/TXT data for these scripts.
+1. Open the SQL script in SSMS and connect to the correct App Control SQL Server.
+2. Confirm the database and reporting period, then run the script.
+3. In the Results pane, right-click the result grid and select **Save Results As...**.
+4. Save as **CSV UTF-8 (`*.csv`)** when available. Include the required filename keyword from the table above and save it in the health-check input folder.
+5. Open the CSV in a text editor and confirm the first row contains column names such as `Computer ID`, `Event`, or `TimeStamp`, as appropriate.
 
-## Exporting a multi-result SQL script as RPT
+Do not use a headerless export or save these results as Excel workbooks. The importer expects CSV data with column names; a headerless export must be rerun after enabling the SSMS option.
+
+### Multi-result scripts: RPT
 
 These scripts return multiple result sets in one execution. Export the complete SSMS text output as one raw `.rpt` file:
+
 | Script | Export format | Filename must contain | Notes |
 |---|---|---|---|
 | `FilePath_Pruning_Scope_AllVersion.sql` | RPT | `filepath pruning` or `filepath_pruning` | Raw SSMS Results to File output. |
@@ -120,46 +94,18 @@ These scripts return multiple result sets in one execution. Export the complete 
 | `DailyPrune_Debug_Scope.sql` | RPT | `daily prune` or `dailyprune` | Raw SSMS Results to File output. |
 | `PurgeAntibodiesPeriodDays scope.sql` | RPT | `purge antibodies` or `purgeantibodiesperioddays` | Raw SSMS Results to File output. |
 
-1. Open the SQL script in SSMS.
-2. Before running it, select **Query > Results To > Results to File**. The shortcut is `Ctrl+Shift+F`.
-3. Run the complete script.
-4. When prompted, save the output with the `.rpt` extension.
-5. Use a descriptive filename containing the required keyword in the table below.
-6. Save the single `.rpt` file in the health-check input folder.
+For each script:
 
-Do not manually split the result sets. Do not copy the results into Excel. The importer detects the individual result tables inside the raw SSMS output by their column names. Diagnostic messages such as statistics, DBCC output, and schema checks may also be present; that is expected.
+1. Open the script in SSMS and select **Query > Results To > Results to File** (shortcut: `Ctrl+Shift+F`).
+2. Run the complete script and save the output with the `.rpt` extension.
+3. Include the required filename keyword from the table above and save the single file in the health-check input folder.
 
-## Exporting data from the App Control UI
+Do not split the result sets or copy them into Excel. The importer finds result tables in the raw SSMS output by their column names. Diagnostic messages such as statistics, DBCC output, and schema checks may also be present; that is expected.
 
-The health-check report also uses two console exports. These are not SQL script outputs.
+### Unapproved File Analysis time chunks
 
-### Computers export
+`UnapprovedFileAnalysis+ v6.1.sql` can be exported as multiple CSV files. Use non-overlapping UTC/server-time ranges and keep every successful chunk for the intended period in the input folder. The PowerShell collector handles this automatically, including splitting a window when it exceeds the script's row cap.
 
-1. Open the App Control console.
-2. Open the **Computers** page.
-3. Add allcolumns to the view for the health-check run.
-4. Export the computer list from the console.
-5. Save it as CSV or TXT with a filename containing `computers`.
-6. Put it in the same input folder as the SQL exports.
-
-Example:
-
-```text
-Computers_20260915.csv
-```
-
-### Custom Rules export
-
-1. Open the App Control console.
-2. Open the **Custom Rules** page.
-3. Add allcolumns to the view for the health-check run.
-4. Save it as CSV or TXT with a filename containing `custom`.
-5. Put it in the same input folder as the SQL exports.
-
-Example:
-
-```text
-CustomRules_20260915.csv
-```
+For manual collection, low-volume environments may be able to use a longer time window. For high-volume environments, use smaller time chunks. If an hourly chunk still exceeds the limit, divide that interval further rather than increasing the row cap. To set a fixed chunk, edit `UnapprovedFileAnalysis+ v6.1.sql`: uncomment the two `SET @startDate` and `@endDate` lines near the top and set the desired non-overlapping range.
 
 
