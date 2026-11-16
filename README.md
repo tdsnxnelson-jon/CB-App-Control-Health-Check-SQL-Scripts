@@ -4,14 +4,20 @@ This folder contains the SQL scripts and collection tool for the CB App Control 
 
 ## Recommended workflow
 
-### 1. Export the console data
+### 1. Download the collection files
+
+Download the SQL scripts and collector from the [CB App Control Health Check SQL Scripts repository](https://github.com/tdsnxnelson-jon/CB-App-Control-Health-Check-SQL-Scripts). On GitHub, select **Code > Download ZIP**, then extract the archive. You can also clone the repository.
+
+Keep `Collect-HealthCheckData.ps1` and all of the `.sql` files together in the same folder. Run the collector from that folder; do not download or move only the `.ps1` file. The script checks for its required SQL files before connecting to SQL Server.
+
+### 2. Export the console data
 
 Two required inputs come from the App Control console, not SQL. Export them before collection or provide their paths when running the PowerShell script:
 
 - **Computers:** Open the **Computers** page, add all columns to the view, and export the list as CSV or TXT. The filename must contain `computers`, for example `Computers_20260915.csv`.
 - **Custom Rules:** Open the **Custom Rules** page, add all columns to the view, and export the list as CSV or TXT. The filename must contain `custom`, for example `CustomRules_20260915.csv`.
 
-### 2. Run the collection script
+### 3. Run the collection script
 
 `Collect-HealthCheckData.ps1` runs each SQL script in sequence and writes the results in the formats and filenames expected by the report tool. It also copies the two console exports into the output folder and can zip the completed collection.
 
@@ -28,7 +34,7 @@ For an Availability Group listener, `-ReadOnlyIntent` requests routing to a read
 
 The script runs only one SQL script at a time and uses `CbP_Analysis_Script SAFE v2.sql`. Prefer a readable secondary for production collection. If one is unavailable, use a low-activity window and monitor SQL Server CPU, runnable tasks, and Availability Group health. Do not run the original `CbP_Analysis_Script.sql` on a busy production primary.
 
-### 3. Review the collection output
+### 4. Review the collection output
 
 By default, the script creates `HealthCheckExport_<timestamp>` in the current directory. Use `-OutputFolder` to choose another location. Check the completion messages and warnings: if an SQL script fails, collection continues, but the report tool skips the missing input and that report section will be empty. Add any missing console exports before using the folder. If the script already zipped the folder, update the ZIP after adding files.
 

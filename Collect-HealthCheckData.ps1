@@ -457,6 +457,34 @@ function Invoke-Collection {
     }
 
     $scriptFolder = $PSScriptRoot
+    $requiredSqlPatterns = @(
+        "Approval Metrics*.sql",
+        "RuleAnalysis*.sql",
+        "ApprovalEventsForRulename*.sql",
+        "BlockAnalysis*.sql",
+        "DatabaseErrorAnalysis*.sql",
+        "CbP_Analysis_Script SAFE*.sql",
+        "DailyPrune_Debug_Scope*.sql",
+        "FilePath_Pruning_Scope*.sql",
+        "PurgeAntibodiesPeriodDays*.sql",
+        "UnapprovedFileAnalysis*.sql"
+    )
+    $missingSqlPatterns = @(
+        foreach ($pattern in $requiredSqlPatterns) {
+            if (-not (Get-ChildItem -Path $scriptFolder -Filter $pattern -File | Select-Object -First 1)) {
+                $pattern
+            }
+        }
+    )
+    if ($missingSqlPatterns.Count -gt 0) {
+        Write-Warning "Required SQL scripts are missing from '$scriptFolder':"
+        foreach ($pattern in $missingSqlPatterns) {
+            Write-Warning "  $pattern"
+        }
+        Write-Warning "Download the SQL scripts and place them in the current directory alongside Collect-HealthCheckData.ps1, then run the script again."
+        exit 1
+    }
+
     $stamp = Get-Date -Format "yyyyMMdd_HHmmss"
     $outFolder = $OutputFolder
     if (-not $outFolder) { $outFolder = Join-Path (Get-Location) "HealthCheckExport_$stamp" }
