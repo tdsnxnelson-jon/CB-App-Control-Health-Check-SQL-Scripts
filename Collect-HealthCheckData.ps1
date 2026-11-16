@@ -163,9 +163,9 @@ function New-SqlConnection {
     $builder["Connect Timeout"] = 30
     if ($ReadOnlyIntent) { $builder["ApplicationIntent"] = "ReadOnly" }
     if ($SqlCredential) {
-        $pwd = $SqlCredential.Password.Copy()
-        $pwd.MakeReadOnly()
-        $cred = New-Object System.Data.SqlClient.SqlCredential($SqlCredential.UserName, $pwd)
+        $securePassword = $SqlCredential.Password.Copy()
+        $securePassword.MakeReadOnly()
+        $cred = New-Object System.Data.SqlClient.SqlCredential($SqlCredential.UserName, $securePassword)
         $conn = New-Object System.Data.SqlClient.SqlConnection($builder.ConnectionString, $cred)
     } else {
         $builder["Integrated Security"] = $true
@@ -194,7 +194,7 @@ function Split-SqlBatches {
 function Format-SqlValue {
     # Renders one reader value the way SSMS text output does.
     param($Value)
-    if ($Value -eq $null -or $Value -is [System.DBNull]) { return "NULL" }
+    if ($null -eq $Value -or $Value -is [System.DBNull]) { return "NULL" }
     if ($Value -is [bool]) { if ($Value) { return "1" } else { return "0" } }
     if ($Value -is [datetime]) { return $Value.ToString("yyyy-MM-dd HH:mm:ss.fff", $script:Invariant) }
     if ($Value -is [byte[]]) { return "0x" + (($Value | ForEach-Object { $_.ToString("X2") }) -join "") }
@@ -204,7 +204,7 @@ function Format-SqlValue {
 
 function Format-CsvField {
     param($Value)
-    if ($Value -eq $null -or $Value -is [System.DBNull]) { return "" }
+    if ($null -eq $Value -or $Value -is [System.DBNull]) { return "" }
     $text = Format-SqlValue $Value
     if ($text -match '[,"\r\n]') { return '"' + ($text -replace '"', '""') + '"' }
     return $text
@@ -228,10 +228,16 @@ function Write-RptTable {
         $widths += $w
     }
     $Writer.WriteLine()
-    $Writer.WriteLine((($Columns | ForEach-Object -Begin { $i = 0 } -Process { $_.PadRight($widths[$i]); $i++ }) -join " "))
+    $headerCells = for ($columnIndex = 0; $columnIndex -lt $Columns.Count; $columnIndex++) {
+        $Columns[$columnIndex].PadRight($widths[$columnIndex])
+    }
+    $Writer.WriteLine(($headerCells -join " "))
     $Writer.WriteLine((($widths | ForEach-Object { "-" * $_ }) -join " "))
     foreach ($row in $Rows) {
-        $Writer.WriteLine((($row | ForEach-Object -Begin { $i = 0 } -Process { $_.PadRight($widths[$i]); $i++ }) -join " "))
+        $rowCells = for ($columnIndex = 0; $columnIndex -lt $row.Count; $columnIndex++) {
+            $row[$columnIndex].PadRight($widths[$columnIndex])
+        }
+        $Writer.WriteLine(($rowCells -join " "))
     }
     $Writer.WriteLine()
 }
@@ -254,8 +260,8 @@ function Invoke-SqlScriptToRpt {
         $conn = New-SqlConnection
         $conn.FireInfoMessageEventOnUserErrors = $true
         $handler = [System.Data.SqlClient.SqlInfoMessageEventHandler] {
-            param($sender, $e)
-            foreach ($err in $e.Errors) {
+            param($sqlConnection, $infoEventArgs)
+            foreach ($err in $infoEventArgs.Errors) {
                 if ($err.Class -gt 0) {
                     $script:RptMessages.Add(("Msg {0}, Level {1}, State {2}, Line {3}" -f $err.Number, $err.Class, $err.State, $err.LineNumber))
                 }
@@ -325,7 +331,7 @@ function Invoke-SqlScriptToCsv {
             $reader = $cmd.ExecuteReader()
             try {
                 do {
-                    if ($reader.FieldCount -gt 0 -and $writer -eq $null) {
+                    if ($reader.FieldCount -gt 0 -and $null -eq $writer) {
                         $writer = New-Object System.IO.StreamWriter($CsvPath, $false, $script:Utf8Bom)
                         $header = @()
                         for ($c = 0; $c -lt $reader.FieldCount; $c++) { $header += Format-CsvField ([string]$reader.GetName($c)) }
